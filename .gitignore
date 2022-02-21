@@ -1,0 +1,2 @@
+# ignore all of the downloaded files in the git commits
+raw_data/*
