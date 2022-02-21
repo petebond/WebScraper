@@ -58,7 +58,6 @@ class Scraper:
         self.player_data["name"] = [item.text for item in name_list]
         self.player_data["classical"] = [item.text for item in classical_list]
         self.player_data["search_term"] = [(item.text + " chess player") for item in name_list]
-        
     
     # Search Wikipedia for each chess player and download photo
     def wiki_player_search(self):
@@ -71,6 +70,8 @@ class Scraper:
             # choose search box
             search = self.driver.find_element_by_id("searchInput")
             search.click()
+            # magnus is famous enough to have his own Wiki URL so I need to fudge his search.
+            # if any other player gets their own web direct link it'll break this scraper.
             if self.player_data["name"][index] == "Magnus Carlsen":
                 search.send_keys("Magnus Carlsen Norwegian")
             else:
