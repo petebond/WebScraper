@@ -12,6 +12,15 @@ import json
 class Scraper:
     
     def __init__(self, url):
+        """Initialise the class object and set up the data structure 
+        
+        player_data is a dictionary with player attributes.
+        each player is accessible by index of the player_data dictionary
+        each player will have data output to the JSON dump later
+        
+        init then installs Chrome Driver and opens the page given by the url parameter
+        the html of that page is then acquired using BS
+        """
         # set up data structure
         self.player_links = []
         self.player_num = 0
@@ -27,13 +36,13 @@ class Scraper:
         self.driver = webdriver.Chrome(ChromeDriverManager().install())
         self.url = url
         self.driver.get(self.url)
-
         # requests and beautiful soup for getting the list of links
         page = requests.get(self.url)
         html = page.text
         self.soup = BeautifulSoup(html, 'html.parser')
         
     def store_UUIDs_and_links(self):
+        """Generating unique IDs using UUID4 and accesing link data from the soup"""
         player_table = self.soup.find(name = 'tbody')
         for link in player_table.find_all('a'):
             self.player_data["links"].append(link.get('href'))
@@ -42,11 +51,15 @@ class Scraper:
         self.data_store = "./raw_data"
 
     def create_store(self, folder):
+        """Checks to see if the raw_data folder exists, if not, creates it."""
         if not os.path.exists(folder):
             os.makedirs(folder)
 
     #Get all player data into a dictionary - well formatted
     def get_player_data(self):
+        """Uses selenium to get name, rank and classical ratings points information from the ratings page
+        Generates a search term from the name, for use in wikipedia later
+        """
         rank_list = self.driver.find_elements(By.CLASS_NAME, "master-players-rating-rank")
         name_list = self.driver.find_elements(By.CLASS_NAME, "username")
         classical_list = self.driver.find_elements(By.CLASS_NAME, "master-players-rating-rank-active")
@@ -58,6 +71,13 @@ class Scraper:
     
     # Search Wikipedia for each chess player and download photo
     def wiki_player_search(self):
+        """Using wikipedia - the function searches for the player using their name and "chess player"
+        which forms the search_term. This brings up a search result page, of which the first link is 
+        accessed (unless a "did you mean confusion needs dealing with). 
+        Then accessed right hand vBox, grabs the image url and then pulls the image into the data folder.
+        
+        Not my finest bit of code, this. Lots of very specific xpaths used, with some workarounds for wiki inconsistencies.
+        """
         for index in range(len(self.player_data["name"])):
             search_term = self.player_data["search_term"][index]
             folder_name = self.player_data["name"][index].strip()
@@ -85,7 +105,7 @@ class Scraper:
             link = first_result.get_attribute("href")
             print(link)
             self.driver.get(link)
-            # data_dump() and pull_image need to run on every iteration of a person search
+            # data_dump() and pull_image() both need to run on every iteration of a person search
             self.pull_image(folder_name, search_term)
             data = {
                 "uuid": self.player_data["uuid"][index],
@@ -98,6 +118,7 @@ class Scraper:
             self.data_dump(folder_name, data)
 
     def pull_image(self, folder_name, search_term):
+        """Downloads the image from the specific location on the wikipedia page."""
         try:
             image = self.driver.find_element_by_xpath('//*[@id="mw-content-text"]/div[1]/table[1]/tbody/tr[2]/td/a/img')
         except:
@@ -110,15 +131,20 @@ class Scraper:
         print(f"Search complete for {search_term} - Moving on!")
             
     def data_dump(self, folder_name, data):
+        """Converts the appropriate indexed player_data information into a json file and stores it in the player's folder"""
         with open(f"raw_data/{folder_name}/data.json", "w") as f:
             json.dump(data, f)
   
 
     ## 
 if __name__ == "__main__":
+    """Main program to trigger each function in order.
+    
+    Paramter for the Scraper class is the URL which is passed to the constructor for the class
+    """
     chess_scrape = Scraper("http://chess.com/ratings")
     chess_scrape.store_UUIDs_and_links()
     chess_scrape.create_store(chess_scrape.data_store)
     chess_scrape.get_player_data()
     chess_scrape.wiki_player_search()
-
+    print(chess_scrape.wiki_player_search.__doc__)
