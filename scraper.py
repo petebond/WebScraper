@@ -4,7 +4,6 @@ from selenium import webdriver
 import urllib.request
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
-import time
 import os
 import uuid
 import json
@@ -32,17 +31,15 @@ class Scraper:
         # requests and beautiful soup for getting the list of links
         page = requests.get(self.url)
         html = page.text
-        soup = BeautifulSoup(html, 'html.parser')
-        #print(soup.prettify())
-        player_table = soup.find(name = 'tbody')
+        self.soup = BeautifulSoup(html, 'html.parser')
+        
+    def store_UUIDs_and_links(self):
+        player_table = self.soup.find(name = 'tbody')
         for link in player_table.find_all('a'):
             self.player_data["links"].append(link.get('href'))
             self.player_data["uuid"].append(str(uuid.uuid4()))
-
         # set storage location
         self.data_store = "./raw_data"
-        self.create_store(self.data_store)
-        self.get_player_data()
 
     def create_store(self, folder):
         if not os.path.exists(folder):
@@ -66,7 +63,6 @@ class Scraper:
             folder_name = self.player_data["name"][index].strip()
             self.create_store(f'raw_data/{folder_name}')
             self.driver.get("http://wikipedia.org")
-            time.sleep(1)
             # choose search box
             search = self.driver.find_element_by_id("searchInput")
             search.click()
@@ -78,7 +74,6 @@ class Scraper:
                 search.send_keys(search_term)
             confirm = self.driver.find_element_by_xpath("/html/body/div[3]/form/fieldset/button")
             confirm.click()
-            #time.sleep(1)
             # try the top result
             print("SEARCH COMPLETE - CLICKING LINK")
             try:
@@ -90,6 +85,7 @@ class Scraper:
             link = first_result.get_attribute("href")
             print(link)
             self.driver.get(link)
+            # data_dump() and pull_image need to run on every iteration of a person search
             self.pull_image(folder_name, search_term)
             data = {
                 "uuid": self.player_data["uuid"][index],
@@ -121,6 +117,8 @@ class Scraper:
     ## 
 if __name__ == "__main__":
     chess_scrape = Scraper("http://chess.com/ratings")
-    time.sleep(1)
+    chess_scrape.store_UUIDs_and_links()
+    chess_scrape.create_store(chess_scrape.data_store)
+    chess_scrape.get_player_data()
     chess_scrape.wiki_player_search()
 
