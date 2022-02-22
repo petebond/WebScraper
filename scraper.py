@@ -29,7 +29,10 @@ class Scraper:
             "rank": [], 
             "classical": [], 
             "search_term": [],
-            "links": []
+            "links": [],
+            "date_of_birth": [],
+            "place_of_birth": [],
+            "chess_federation": []
         }
         # selenium webdriver for wiki scraping
         self.driver = webdriver.Chrome(ChromeDriverManager().install())
@@ -80,7 +83,6 @@ class Scraper:
         for index in range(len(self.player_data["name"])):
             search_term = self.player_data["search_term"][index]
             folder_name = self.player_data["name"][index].strip()
-            self.create_store(f'raw_data/{folder_name}')
             self.driver.get("http://wikipedia.org")
             # choose search box
             search = self.driver.find_element_by_id("searchInput")
@@ -104,16 +106,22 @@ class Scraper:
             link = first_result.get_attribute("href")
             print(link)
             self.driver.get(link)
-            # data_dump() and pull_image() both need to run on every iteration of a person search
+            self.create_store(f'raw_data/{folder_name}')
             self.pull_image(folder_name, search_term)
+            # data_dump() and pull_image() both need to run on every iteration of a person search
+            self.follow_links_more_data(folder_name, self.player_data["links"][index])
             data = {
                 "uuid": self.player_data["uuid"][index],
                 "name": self.player_data["name"][index], 
                 "rank": self.player_data["rank"][index], 
                 "classical": self.player_data["classical"][index],
                 "search_term": self.player_data["search_term"][index],
-                "links": self.player_data["links"][index]        
+                "links": self.player_data["links"][index], 
+                "date_of_birth": self.player_data["date_of_birth"][index],
+                "place_of_birth": self.player_data["place_of_birth"][index],
+                "chess_federation": self.player_data["chess_federation"][index]    
             }
+            
             self.data_dump(folder_name, data)
 
     def pull_image(self, folder_name, search_term):
@@ -133,6 +141,25 @@ class Scraper:
         """Converts the appropriate indexed player_data information into a json file and stores it in the player's folder"""
         with open(f"raw_data/{folder_name}/data.json", "w") as f:
             json.dump(data, f)
+
+    def follow_links_more_data(self, name, link):
+        self.driver.get(link)
+        print(f"going to {link}")
+        player_table = self.driver.find_elements(By.CLASS_NAME, "master-players-value")
+        player_stats = []
+        for row in player_table:
+            player_stats.append(row.text)
+        print(player_stats)
+        self.player_data["date_of_birth"].append(player_stats[1])
+        self.player_data["place_of_birth"].append(player_stats[2])
+        self.player_data["chess_federation"].append(player_stats[3])
+        #Get second image
+        image = self.driver.find_element(By.CLASS_NAME, "post-view-thumbnail")
+        image = image.get_attribute("src")
+        urllib.request.urlretrieve(image, f"raw_data/{name}/{name}2.jpg")
+
+
+
   
 
     ## 
