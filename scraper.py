@@ -143,6 +143,11 @@ class Scraper:
             json.dump(data, f)
 
     def follow_links_more_data(self, name, link):
+        """Going to the individual page on chess.com and getting extra data
+
+        This downloads the player date of birth and a second image, as well
+        as country of origin and chess federation that the player represents.
+        """
         self.driver.get(link)
         print(f"going to {link}")
         player_table = self.driver.find_elements(By.CLASS_NAME, "master-players-value")
