@@ -23,7 +23,6 @@ class Scraper:
         """
         # set up data structure
         self.player_links = []
-        self.player_num = 0
         self.player_data = {
             "uuid": [], 
             "name": [], 
@@ -40,7 +39,7 @@ class Scraper:
         page = requests.get(self.url)
         html = page.text
         self.soup = BeautifulSoup(html, 'html.parser')
-        
+
     def store_UUIDs_and_links(self):
         """Generating unique IDs using UUID4 and accesing link data from the soup"""
         player_table = self.soup.find(name = 'tbody')
