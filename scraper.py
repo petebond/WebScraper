@@ -11,6 +11,7 @@ import boto3
 
 
 
+
 class Scraper:
     
     def __init__(self, url):
@@ -145,7 +146,8 @@ class Scraper:
             json.dump(data, f)
         filename = (f"raw_data/{folder_name}/data.json")
         pic_file = (f"raw_data/{folder_name}/{folder_name}.jpg")
-        self.upload_to_aws(filename, 'chess-top-50', pic_file, folder_name)
+        pic_file2 = (f"raw_data/{folder_name}/{folder_name}2.jpg")
+        self.upload_to_aws(filename, 'chess-top-50', pic_file, pic_file2, folder_name)
 
     def follow_links_more_data(self, name, link):
         """Going to the individual page on chess.com and getting extra data
@@ -168,16 +170,17 @@ class Scraper:
         image = image.get_attribute("src")
         urllib.request.urlretrieve(image, f"raw_data/{name}/{name}2.jpg")
 
-    def upload_to_aws(self, filename, bucket, image, folder):
+    def upload_to_aws(self, filename, bucket, image, image2, folder):
         """Gets the data.json file and the image.jpg and uploads them to AWS"""
         s3 = boto3.client('s3')
         s3b = boto3.resource('s3')
         with open(filename, 'rb') as data:
-            s3.upload_fileobj(data, bucket, f"{folder}/data.json")
+            s3.upload_fileobj(data, bucket, f"raw_data/{folder}/data.json")
             print("uploading json file")
-            s3b.meta.client.upload_file(image, bucket, f"{folder}/{folder}.jpg")
+            s3b.meta.client.upload_file(image, bucket, f"raw_data/{folder}/{folder}.jpg")
             print("uploaded picture")
-
+            s3b.meta.client.upload_file(image2, bucket, f"raw_data/{folder}/{folder}2.jpg")
+            print("uploaded second picture")
   
 
     ## 
