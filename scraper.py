@@ -7,6 +7,8 @@ from selenium.webdriver.common.by import By
 import os
 import uuid
 import json
+import boto3
+
 
 
 class Scraper:
@@ -141,6 +143,9 @@ class Scraper:
         """Converts the appropriate indexed player_data information into a json file and stores it in the player's folder"""
         with open(f"raw_data/{folder_name}/data.json", "w") as f:
             json.dump(data, f)
+        filename = (f"raw_data/{folder_name}/data.json")
+        pic_file = (f"raw_data/{folder_name}/{folder_name}.jpg")
+        self.upload_to_aws(filename, 'chess-top-50', pic_file, folder_name)
 
     def follow_links_more_data(self, name, link):
         """Going to the individual page on chess.com and getting extra data
@@ -163,7 +168,15 @@ class Scraper:
         image = image.get_attribute("src")
         urllib.request.urlretrieve(image, f"raw_data/{name}/{name}2.jpg")
 
-
+    def upload_to_aws(self, filename, bucket, image, folder):
+        """Gets the data.json file and the image.jpg and uploads them to AWS"""
+        s3 = boto3.client('s3')
+        s3b = boto3.resource('s3')
+        with open(filename, 'rb') as data:
+            s3.upload_fileobj(data, bucket, f"{folder}/data.json")
+            print("uploading json file")
+            s3b.meta.client.upload_file(image, bucket, f"{folder}/{folder}.jpg")
+            print("uploaded picture")
 
   
 
@@ -179,3 +192,4 @@ if __name__ == "__main__":
     chess_scrape.get_player_data()
     chess_scrape.wiki_player_search()
     print(chess_scrape.wiki_player_search.__doc__)
+    
