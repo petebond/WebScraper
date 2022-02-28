@@ -1,3 +1,6 @@
+from dataclasses import dataclass
+from distutils.command.upload import upload
+from xml.sax import default_parser_list
 import requests
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -8,6 +11,9 @@ import os
 import uuid
 import json
 import boto3
+import pandas as pd
+from sqlalchemy import create_engine
+from sqlalchemy import inspect
 
 
 
@@ -113,8 +119,8 @@ class Scraper:
             self.pull_image(folder_name, search_term)
             # data_dump() and pull_image() both need to run on every iteration of a person search
             self.follow_links_more_data(folder_name, self.player_data["links"][index])
-            data = {
-                "uuid": self.player_data["uuid"][index],
+            data = [
+                {"uuid": self.player_data["uuid"][index],
                 "name": self.player_data["name"][index], 
                 "rank": self.player_data["rank"][index], 
                 "classical": self.player_data["classical"][index],
@@ -122,9 +128,8 @@ class Scraper:
                 "links": self.player_data["links"][index], 
                 "date_of_birth": self.player_data["date_of_birth"][index],
                 "place_of_birth": self.player_data["place_of_birth"][index],
-                "chess_federation": self.player_data["chess_federation"][index]    
-            }
-            
+                "chess_federation": self.player_data["chess_federation"][index]}
+            ]    
             self.data_dump(folder_name, data)
 
     def pull_image(self, folder_name, search_term):
@@ -181,7 +186,49 @@ class Scraper:
             print("uploaded picture")
             s3b.meta.client.upload_file(image2, bucket, f"raw_data/{folder}/{folder}2.jpg")
             print("uploaded second picture")
-  
+
+    def upload_table_data(self):
+        """uploads data.json from folders to AWS RDS
+        
+        Takes the data.json file from each player folder in raw_data
+        Converts the data.json files into a pandas data frame
+        Uploads the data frame as a table in AWS
+        """
+        DATABASE_TYPE = "postgresql"
+        DBAPI = 'psycopg2'
+        ENDPOINT = 'chess-db.cxwlqkybpl0p.eu-west-2.rds.amazonaws.com'
+        USER = 'postgres'
+        PASSWORD = 'chesspass'
+        PORT = 5432
+        DATABASE = 'chessdb'
+        engine = create_engine(f"{DATABASE_TYPE}+{DBAPI}://{USER}:{PASSWORD}@{ENDPOINT}:{PORT}/{DATABASE}")
+        engine.connect()
+        file_list = []
+        # Get the list of data files from the folder structure
+        directory = 'raw_data'
+        for player_folder in os.listdir(directory):
+            f = os.path.join(directory, player_folder)
+            for file in os.listdir(f):
+                if ".json" in file:
+                    file_list.append(os.path.join(f, file))            
+        # Iterate through the folders to get the data out of the json files
+        # Convert all of the jsons to dataframes
+        # Merge all of the dataframes into one frame
+        df_list = []
+        for file in file_list:
+            temp_frame = pd.read_json(file, orient='records')
+            df_list.append(temp_frame)
+        data_set = pd.concat(df_list, axis = 0, ignore_index=True)
+        print(data_set)
+
+        # Upload the dataframe as a table to AWS RDS
+        data_set.to_sql('tbl_chess_players', engine, if_exists='replace')
+        # Have a look at the column names for each table
+        insp = inspect(engine)
+        print(insp)
+        for table_name in insp.get_table_names():
+            for column in insp.get_columns(table_name):
+                print(f"Column: {column['name']} of {table_name}") 
 
     ## 
 if __name__ == "__main__":
@@ -190,9 +237,10 @@ if __name__ == "__main__":
     Paramter for the Scraper class is the URL which is passed to the constructor for the class
     """
     chess_scrape = Scraper("http://chess.com/ratings")
-    chess_scrape.store_UUIDs_and_links()
-    chess_scrape.create_store(chess_scrape.data_store)
-    chess_scrape.get_player_data()
-    chess_scrape.wiki_player_search()
-    print(chess_scrape.wiki_player_search.__doc__)
+    #chess_scrape.store_UUIDs_and_links()
+    #chess_scrape.create_store(chess_scrape.data_store)
+    #chess_scrape.get_player_data()
+    #chess_scrape.wiki_player_search()
+    chess_scrape.upload_table_data()
+    #print(chess_scrape.wiki_player_search.__doc__)
     
