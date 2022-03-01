@@ -1,12 +1,37 @@
-from types import NoneType
-from scraper import Scraper
 import unittest
+from selenium.webdriver.common.by import By
+import scraper as ws
 
-class ScraperTestCase(unittest.TestCase):
-    def test_load_webpage(self):
-        open_chess = Scraper("https://chess.com/ratings")
-        expected_value = scraper.Scraper
-        actual_value = Scraper("https://chess.com/ratings")
-        self.assertEqual(expected_value, actual_value)
 
-unittest.main(argv=[''], verbosity=3, exit=False)
+class TestScraper(unittest.TestCase):
+    def setUp(self):
+        self.bot = ws.Scraper("http://chess.com/ratings")
+
+    def test_ratings_page_loads(self):
+        """
+        Test that the chess.com ratings page loads on init
+        """
+        actual_value = self.bot.driver.current_url
+        print(actual_value)
+        expected_value = "https://www.chess.com/ratings"
+        self.assertEqual(actual_value, expected_value)
+
+    def test_extra_player_data(self):
+        self.bot.follow_links_more_data(
+            "Magnus Carlsen", "https://www.chess.com/players/magnus-carlsen")
+        actual_value = self.bot.driver.current_url
+        expected_value = "https://www.chess.com/players/magnus-carlsen"
+        self.assertEqual(actual_value, expected_value)
+
+    def 
+        self.bot.driver.find_element(
+            By.XPATH, 'the path of something in the player rating table')
+
+    def tearDown(self):
+        pass
+
+
+# Integration test is where you test a method that calls other methods.
+# We want to test as granularly as possible.
+if __name__ == '__main__':
+    unittest.main(verbosity=2)

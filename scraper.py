@@ -1,3 +1,4 @@
+# from nturl2path import url2pathname
 import requests
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -53,6 +54,8 @@ class Scraper:
         }
         # selenium webdriver for wiki scraping
         self.driver = webdriver.Chrome(ChromeDriverManager().install())
+
+    def page_grab(self, url):
         self.url = url
         self.driver.get(self.url)
         # requests and beautiful soup for getting the list of links
@@ -86,8 +89,7 @@ class Scraper:
         Parameters:
         ----------
         Folder: str
-            String value of the folder pat
-            h for each player's data store
+            String value of the folder path for each player's data store
 
         Returns:
         -------
@@ -127,6 +129,8 @@ class Scraper:
     # Search Wikipedia for each chess player and download photo
     def wiki_player_search(self):
         """
+        Wikipedia search for player photos
+
         Using wikipedia - the function searches for the player using
         their name and "chess player" which forms the search_term.
         This brings up a search result page, of which the first link is
@@ -136,6 +140,14 @@ class Scraper:
 
         Not my finest bit of code, this. Lots of very specific xpaths used,
         with some workarounds for wiki inconsistencies.
+
+        Parameters:
+        ----------
+        None
+
+        Returns:
+        -------
+        None
         """
         for index in range(len(self.player_data["name"])):
             search_term = self.player_data["search_term"][index]
@@ -241,8 +253,14 @@ class Scraper:
         with open(f"raw_data/{folder_name}/data.json", "w") as f:
             json.dump(data, f)
         filename = (f"raw_data/{folder_name}/data.json")
-        pic_file = (f"raw_data/{folder_name}/{folder_name}.jpg")
-        pic_file2 = (f"raw_data/{folder_name}/{folder_name}2.jpg")
+        try:
+            pic_file = (f"raw_data/{folder_name}/{folder_name}.jpg")
+        except Exception:
+            pic_file = ""
+        try:
+            pic_file2 = (f"raw_data/{folder_name}/{folder_name}2.jpg")
+        except Exception:
+            pic_file2 = ""
         self.upload_to_aws(
             filename, 'chess-top-50', pic_file, pic_file2, folder_name)
 
@@ -275,12 +293,18 @@ class Scraper:
         with open(filename, 'rb') as data:
             s3.upload_fileobj(data, bucket, f"raw_data/{folder}/data.json")
             print("uploading json file")
-            s3b.meta.client.upload_file(
-                image, bucket, f"raw_data/{folder}/{folder}.jpg")
-            print("uploaded picture")
-            s3b.meta.client.upload_file(
-                image2, bucket, f"raw_data/{folder}/{folder}2.jpg")
-            print("uploaded second picture")
+            try:
+                s3b.meta.client.upload_file(
+                    image, bucket, f"raw_data/{folder}/{folder}.jpg")
+                print("uploaded picture")
+            except Exception:
+                pass
+            try:
+                s3b.meta.client.upload_file(
+                    image2, bucket, f"raw_data/{folder}/{folder}2.jpg")
+                print("uploaded second picture")
+            except Exception:
+                pass
 
     def upload_table_data(self):
         """uploads data.json from folders to AWS RDS
@@ -334,10 +358,13 @@ if __name__ == "__main__":
     test = False
     if test is False:
         chess_scrape = Scraper("http://chess.com/ratings")
-        chess_scrape.store_UUIDs_and_links()
-        chess_scrape.create_store(chess_scrape.data_store)
-        chess_scrape.get_player_data()
-        chess_scrape.wiki_player_search()
+        for i in range(1, 9):
+            url = "http://chess.com/ratings" + "?page=" + str(i)
+            chess_scrape.page_grab(url)
+            chess_scrape.store_UUIDs_and_links()
+            chess_scrape.create_store(chess_scrape.data_store)
+            chess_scrape.get_player_data()
+            chess_scrape.wiki_player_search()
         chess_scrape.upload_table_data()
     else:
         chess_scrape = Scraper("http://chess.com/ratings")
