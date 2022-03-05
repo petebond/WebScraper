@@ -42,6 +42,7 @@ class Scraper:
 
         """
         # set up data structure
+        self.changes = False
         self.player_links = []
         self.player_data = {
             "uuid": [],
@@ -59,12 +60,13 @@ class Scraper:
         options.add_argument('--headless')
         options.add_argument('--disable-gpu')
         self.driver = webdriver.Chrome(ChromeDriverManager().install(),
-                                       chrome_options=options)
+                                       options=options)
         # set storage location
         self.data_store = "./raw_data"
 
         # acquire existing data from RDS for comparison
-        ## TODO get RDS connection. Compare name and rank of existing before downloading new.
+        # TODO get RDS connection. Compare name and rank of existing
+        # before downloading new.
 
     def page_grab(self, url):
         self.url = url
@@ -145,20 +147,10 @@ class Scraper:
                                             item.text + " chess player")
                                             for item in name_list])
 
-    # Search Wikipedia for each chess player and download photo
-    def wiki_player_search(self):
+    # Follow previously downloaded links to get player data and download photo
+    def player_search(self):
         """
-        Wikipedia search for player photos
-
-        Using wikipedia - the function searches for the player using
-        their name and "chess player" which forms the search_term.
-        This brings up a search result page, of which the first link is
-        accessed (unless a "did you mean confusion needs dealing with).
-        Then accessed right hand vBox, grabs the image url and then pulls
-        the image into the data folder.
-
-        Not my finest bit of code, this. Lots of very specific xpaths used,
-        with some workarounds for wiki inconsistencies.
+        Scrapes info from each player profile page on chess.com
 
         Parameters:
         ----------
@@ -169,12 +161,15 @@ class Scraper:
         None
         """
         with alive_bar(359) as bar:
+            # Get chess.com profile page data first
             for index in range(len(self.player_data["name"])):
                 folder_name = self.player_data["name"][index].strip()
                 self.create_store(f'raw_data/{folder_name}')
-                # self.search_wiki(index, folder_name)
-                self.follow_links_more_data(
-                    folder_name, self.player_data["links"][index])
+                upload = self.follow_links_more_data(
+                            self.player_data["links"][index],
+                            self.player_data["name"][index],
+                            self.player_data["rank"][index],
+                            self.player_data["classical"][index])
                 data = [
                     {"uuid": self.player_data["uuid"][index],
                      "name": self.player_data["name"][index],
@@ -191,91 +186,10 @@ class Scraper:
                 # create the data.json from the above dictionary
                 with open(f"raw_data/{folder_name}/data.json", "w") as f:
                     json.dump(data, f)
-                
-                self.data_dump(folder_name) #AWS S3 UPLOAD
+                # AWS S3 UPLOAD
+                if upload:
+                    self.data_dump(folder_name)
                 bar()
-
-    def search_wiki(self, index, folder_name):
-        search_term = self.player_data["search_term"][index]
-        if not os.path.isfile(f'raw_data/{folder_name}/{folder_name} - wiki.jpg'):
-            self.driver.get("http://wikipedia.org")
-            # choose search box
-            search = self.driver.find_element_by_id("searchInput")
-            search.click()
-            # magnus is famous enough to have his own Wiki URL
-            # so I need to fudge his search.
-            # if any other player gets their own web direct link
-            # it'll break this scraper.
-            if self.player_data["name"][index] == "Magnus Carlsen":
-                search.send_keys("Magnus Carlsen Norwegian")
-            else:
-                search.send_keys(search_term)
-            confirm = self.driver.find_element_by_xpath(
-                "/html/body/div[3]/form/fieldset/button")
-            confirm.click()
-            # try the top result
-            try:
-                first_result = self.driver.find_element_by_xpath(
-                    "/html/body/div[3]/div[3]/div[4]/div[3]/ul/li[1]/div[1]/a")
-            except Exception:
-                try:
-                    # some pages have a "did you mean" to ignore
-                    first_result = self.driver.find_element_by_xpath(
-                        ("/html/body/div[3]/div[3]/div[4]/" +
-                            "div[4]/ul/li[1]/div[1]/a"))
-                except Exception:
-                    pass
-            try:
-                self.driver.find_element(By.CLASS_NAME, 'mw-search-nonefound')
-                pass
-            except Exception:
-                link = first_result.get_attribute("href")
-                self.driver.get(link)
-                self.pull_image(folder_name)
-            # data_dump() and pull_image() both need to run on
-            # every iteration of a person search
-
-    def pull_image(self, folder_name):
-        """
-        Downloads the image from the specific location on the wikipedia page.
-
-        Parameters:
-        ----------
-        folder_name: str
-            String value of the folder path for each player's data store
-
-        search_term: str
-            The player's name with "chess player" added to the end
-
-        Returns:
-        -------
-        None
-        """
-        got_image = False
-        try:
-            image = self.driver.find_element_by_xpath(
-                '//*[@id="mw-content-text"]/div[1]/'
-                'table[1]/tbody/tr[2]/td/a/img')
-            got_image = True
-        except Exception:
-            try:
-                image = self.driver.find_element_by_xpath(
-                    '//*[@id="mw-content-text"]/div[1]/'
-                    'table[1]/tbody/tr[3]/td/a/img')
-                got_image = True
-            except Exception:
-                try:
-                    image = self.driver.find_element_by_xpath(
-                        '//*[@id="mw-content-text"]/div[1]/'
-                        'table[2]/tbody/tr[2]/td/a/img')
-                    got_image = True
-                except Exception:
-                    pass
-        if got_image:
-            self.create_store(f'raw_data/{folder_name}')
-            image = image.get_attribute("src")
-            urllib.request.urlretrieve(
-                image, f"raw_data/{folder_name}/{folder_name} - wiki.jpg")
 
     def data_dump(self, folder_name):
         """
@@ -300,13 +214,23 @@ class Scraper:
         self.upload_to_aws((f"raw_data/{folder_name}/data.json"),
                            'chess-top-50', pic_file, pic_file2, folder_name)
 
-    def follow_links_more_data(self, name, link):
+    def follow_links_more_data(self, link, name, rank, classical):
         """Going to the individual page on chess.com and getting extra data
 
         This downloads the player date of birth and a second image, as well
         as country of origin and chess federation that the player represents.
         """
-        if not os.path.isfile(f'raw_data/{name}/data.json'):
+        upload = False
+        try:
+            file = (f"raw_data/{name}/data.json")
+            temp_stats = pd.read_json(file, orient='records')
+            temp_rank = temp_stats['rank'][0]
+            temp_classical = temp_stats['classical'][0]
+        except ValueError:
+            temp_rank = 0
+            temp_classical = 0
+        if rank != temp_rank and classical != temp_classical:
+            upload = True
             self.driver.get(link)
             player_table = self.driver.find_elements(
                 By.CLASS_NAME, "master-players-value")
@@ -316,17 +240,27 @@ class Scraper:
             self.player_data["date_of_birth"].append(player_stats[1])
             self.player_data["place_of_birth"].append(player_stats[2])
             self.player_data["chess_federation"].append(player_stats[3])
-            # Get chess.com image if not already acquired
+            self.changes = True
+        # Get chess.com image if not already acquired
+        if not os.path.exists(f"raw_data/{name}/{name}.jpg"):
+            upload = True
             try:
                 image = self.driver.find_element(By.CLASS_NAME,
-                                                "post-view-thumbnail")
+                                                 "post-view-thumbnail")
                 image = image.get_attribute("src")
-                urllib.request.urlretrieve(image, f"raw_data/{name}/{name}.jpg")
+                urllib.request.urlretrieve(image,
+                                           f"raw_data/{name}/{name}.jpg")
             except Exception:
                 urllib.request.urlretrieve("https://tinyurl.com/y7l4drrj",
-                                        f"raw_data/{name}/{name}.jpg")
+                                           f"raw_data/{name}/{name}.jpg")
         else:
-
+            self.player_data["date_of_birth"].append(
+                                            temp_stats['date_of_birth'][0])
+            self.player_data["place_of_birth"].append(
+                                            temp_stats['place_of_birth'][0])
+            self.player_data["chess_federation"].append(
+                                            temp_stats['chess_federation'][0])
+        return upload
 
     def upload_to_aws(self, filename, bucket, image, image2, folder):
         """Gets the data.json file and the image.jpg and uploads them to AWS"""
@@ -384,13 +318,14 @@ class Scraper:
         print(data_set)
 
         # Upload the dataframe as a table to AWS RDS
-        data_set.to_sql('tbl_chess_players', engine, if_exists='replace')
-        # Have a look at the column names for each table
-        insp = inspect(engine)
-        print(insp)
-        for table_name in insp.get_table_names():
-            for column in insp.get_columns(table_name):
-                print(f"Column: {column['name']} of {table_name}")
+        if self.changes:
+            data_set.to_sql('tbl_chess_players', engine, if_exists='replace')
+            # Have a look at the column names for each table
+            insp = inspect(engine)
+            print(insp)
+            for table_name in insp.get_table_names():
+                for column in insp.get_columns(table_name):
+                    print(f"Column: {column['name']} of {table_name}")
 
 
 if __name__ == "__main__":
@@ -398,6 +333,8 @@ if __name__ == "__main__":
     Main program to trigger each function in order.
     """
     test = False
+    upload_to_s3 = False
+    upload_to_rds = False
     if test is False:
         chess_scrape = Scraper("http://chess.com/ratings")
         for i in range(1, 9):
@@ -406,10 +343,9 @@ if __name__ == "__main__":
             chess_scrape.store_UUIDs_and_links()
             chess_scrape.create_store(chess_scrape.data_store)
             chess_scrape.get_player_data()
-            # chess_scrape.driver.close()
+        chess_scrape.player_search()
         chess_scrape.upload_table_data()
-        chess_scrape.wiki_player_search()
-        
+
     else:
         chess_scrape = Scraper("http://chess.com/ratings")
         chess_scrape.upload_table_data()
