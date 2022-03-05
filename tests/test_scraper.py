@@ -1,6 +1,5 @@
 import unittest
-from selenium.webdriver.common.by import By
-import scraper as ws
+import web_scraper.scraper as ws
 
 
 class TestScraper(unittest.TestCase):
@@ -22,10 +21,6 @@ class TestScraper(unittest.TestCase):
         actual_value = self.bot.driver.current_url
         expected_value = "https://www.chess.com/players/magnus-carlsen"
         self.assertEqual(actual_value, expected_value)
-
-    def 
-        self.bot.driver.find_element(
-            By.XPATH, 'the path of something in the player rating table')
 
     def tearDown(self):
         pass
