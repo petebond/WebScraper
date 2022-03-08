@@ -10,14 +10,15 @@ import os
 import uuid
 import json
 import boto3
+import botocore
+import shutil
 import pandas as pd
-# import time
 from sqlalchemy import create_engine
 from alive_progress import alive_bar
 
 
 class Scraper:
-    def __init__(self, url):
+    def __init__(self):
         """Initialise the class object and set up the data structure
 
         Parameters:
@@ -61,6 +62,8 @@ class Scraper:
         options.add_argument('--disable-gpu')
         self.driver = webdriver.Chrome(ChromeDriverManager().install(),
                                        options=options)
+        self.s3 = boto3.client('s3')
+        self.s3b = boto3.resource('s3')
         # set storage location
         self.data_store = "./raw_data"
 
@@ -259,12 +262,8 @@ class Scraper:
             pic_file = (f"raw_data/{folder_name}/{folder_name}.jpg")
         except Exception:
             pic_file = ""
-        try:
-            pic_file2 = (f"raw_data/{folder_name}/{folder_name} - wiki.jpg")
-        except Exception:
-            pic_file2 = ""
         self.upload_to_aws((f"raw_data/{folder_name}/data.json"),
-                           'chess-top-50', pic_file, pic_file2, folder_name)
+                           'chess-top-50', pic_file, folder_name)
 
     def follow_links_more_data(self, link, name, rank, classical):
         """Going to the individual page on chess.com and getting extra data
@@ -304,34 +303,36 @@ class Scraper:
                 rds['place_of_birth'][position])
             self.player_data.at[position, "chess_federation"] = (
                 rds['chess_federation'][position])
-        if not os.path.exists(f"raw_data/{name}/{name}.jpg"):
-            # upload = True
-            self.driver.get(link)
-            try:
-                image = self.driver.find_element(By.CLASS_NAME,
-                                                 "post-view-thumbnail")
-                image = image.get_attribute("src")
-                urllib.request.urlretrieve(image,
-                                           f"raw_data/{name}/{name}.jpg")
-            except Exception:
-                urllib.request.urlretrieve("https://tinyurl.com/y7l4drrj",
-                                           f"raw_data/{name}/{name}.jpg")
+        # reach out to s3 to see if there's a picture there.
+        try:
+            self.s3b.Object('chess-top-50',
+                            f"raw_data/{name}/{name}.jpg").load()
+            print("IMAGE EXISTS ON REMOTE STORAGE _ IGNORE")
+        except botocore.exceptions.ClientError as e:
+            if e.response['Error']['Code'] == "404":
+                print("NO IMAGE FOUND ON S3 - SETTING TO RETRIEVE AND UPLOAD")
+                upload = True
+                self.driver.get(link)
+                try:
+                    image = self.driver.find_element(By.CLASS_NAME,
+                                                     "post-view-thumbnail")
+                    image = image.get_attribute("src")
+                    urllib.request.urlretrieve(image,
+                                               f"raw_data/{name}/{name}.jpg")
+                except Exception:
+                    urllib.request.urlretrieve("https://tinyurl.com/y7l4drrj",
+                                               f"raw_data/{name}/{name}.jpg")
         return upload
 
-    def upload_to_aws(self, filename, bucket, image, image2, folder):
+    def upload_to_aws(self, filename, bucket, image, folder):
         """Gets the data.json file and the image.jpg and uploads them to AWS"""
-        s3 = boto3.client('s3')
-        s3b = boto3.resource('s3')
         with open(filename, 'rb') as data:
-            s3.upload_fileobj(data, bucket, f"raw_data/{folder}/data.json")
+            self.s3.upload_fileobj(data,
+                                   bucket,
+                                   f"raw_data/{folder}/data.json")
             try:
-                s3b.meta.client.upload_file(
+                self.s3b.meta.client.upload_file(
                     image, bucket, f"raw_data/{folder}/{folder}.jpg")
-            except Exception:
-                pass
-            try:
-                s3b.meta.client.upload_file(
-                    image2, bucket, f"raw_data/{folder}/{folder} - wiki.jpg")
             except Exception:
                 pass
 
@@ -360,11 +361,14 @@ class Scraper:
             df_list.append(temp_frame)
         data_set = pd.concat(df_list, axis=0, ignore_index=True)
         print(data_set)
-
         # Upload the dataframe as a table to AWS RDS
         if self.changes:
             data_set.to_sql('tbl_chess_players', self.engine,
                             if_exists='replace')
+
+    def cleanup(self):
+        if os.path.exists("./raw_data"):
+            shutil.rmtree("./raw_data/")
 
 
 if __name__ == "__main__":
@@ -375,7 +379,7 @@ if __name__ == "__main__":
     upload_to_s3 = False
     upload_to_rds = False
     if test is False:
-        chess_scrape = Scraper("http://chess.com/ratings")
+        chess_scrape = Scraper()
         chess_scrape.connect_to_RDS_engine()
         for i in range(1, 9):
             url = "http://chess.com/ratings" + "?page=" + str(i)
@@ -390,6 +394,7 @@ if __name__ == "__main__":
             chess_scrape.upload_table_data()
         else:
             print("They're the same. No need to rescrape")
+        chess_scrape.cleanup()
 
     else:
         chess_scrape = Scraper("http://chess.com/ratings")
