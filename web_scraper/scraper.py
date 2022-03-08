@@ -1,4 +1,5 @@
 import requests
+import numpy as np
 from bs4 import BeautifulSoup
 from selenium import webdriver
 import urllib.request
@@ -12,7 +13,6 @@ import boto3
 import pandas as pd
 # import time
 from sqlalchemy import create_engine
-from sqlalchemy import inspect
 from alive_progress import alive_bar
 
 
@@ -64,9 +64,26 @@ class Scraper:
         # set storage location
         self.data_store = "./raw_data"
 
-        # acquire existing data from RDS for comparison
-        # TODO get RDS connection. Compare name and rank of existing
-        # before downloading new.
+    def connect_to_RDS_engine(self):
+        DATABASE_TYPE = "postgresql"
+        DBAPI = 'psycopg2'
+        ENDPOINT = 'chess-db.cxwlqkybpl0p.eu-west-2.rds.amazonaws.com'
+        USER = 'postgres'
+        PASSWORD = 'chesspass'
+        PORT = 5432
+        DATABASE = 'chessdb'
+        self.engine = create_engine(f"{DATABASE_TYPE}+{DBAPI}://{USER}:"
+                                    f"{PASSWORD}@{ENDPOINT}:{PORT}/{DATABASE}")
+        self.engine.connect()
+        self.rds_player_data = pd.read_sql_table(
+            'tbl_chess_players', self.engine,
+            columns=["uuid", "name", "rank", "classical",
+                     "search_term", "links", "date_of_birth",
+                     "place_of_birth", "chess_federation"])
+        self.rds_player_data = (self.rds_player_data.sort_values('name')
+                                .reset_index(drop=True))
+        print("Data from RDS below*****")
+        print(self.rds_player_data)
 
     def page_grab(self, url):
         self.url = url
@@ -146,6 +163,41 @@ class Scraper:
         self.player_data["search_term"] = (self.player_data["search_term"] + [(
                                             item.text + " chess player")
                                             for item in name_list])
+        self.player_data["date_of_birth"] = (
+            self.player_data["date_of_birth"]
+            + [item.text for item in name_list])
+        self.player_data["place_of_birth"] = (
+            self.player_data["place_of_birth"]
+            + [item.text for item in name_list])
+        self.player_data["chess_federation"] = (
+            self.player_data["chess_federation"]
+            + [item.text for item in name_list])
+
+    def sort_scraped_data(self):
+        self.player_data = pd.DataFrame(self.player_data)
+        self.player_data = self.player_data.sort_values(
+            'name').reset_index(drop=True)
+
+    def check_for_differences(self):
+        self.player_data['matched'] = (
+            np.where(self.player_data['name']
+                     == self.rds_player_data['name'], 1, 0))
+        if (sum(self.player_data['matched']) == len(
+                self.player_data['matched'])):
+            self.player_data['matched'] = (
+                np.where(self.player_data['rank']
+                         == self.rds_player_data['rank'], 1, 0))
+            if (sum(self.player_data['matched'])
+                    == len(self.player_data['matched'])):
+                self.player_data['matched'] = (
+                    np.where(self.player_data['classical']
+                             == self.rds_player_data['classical'], 1, 0))
+                if (sum(self.player_data['matched'])
+                        == len(self.player_data['matched'])):
+                    print("They're the same. No need to rescrape")
+                    return False
+        print("Differences found - Calculating rescrape necessity")
+        return True
 
     # Follow previously downloaded links to get player data and download photo
     def player_search(self):
@@ -217,19 +269,20 @@ class Scraper:
     def follow_links_more_data(self, link, name, rank, classical):
         """Going to the individual page on chess.com and getting extra data
 
-        This downloads the player date of birth and a second image, as well
+        This downloads the player date of birth and an image, as well
         as country of origin and chess federation that the player represents.
         """
         upload = False
+        rds = self.rds_player_data
+        position = rds[rds['name'] == name].index[0]
         try:
-            file = (f"raw_data/{name}/data.json")
-            temp_stats = pd.read_json(file, orient='records')
-            temp_rank = temp_stats['rank'][0]
-            temp_classical = temp_stats['classical'][0]
+            temp_rank = rds['rank'][position]
+            temp_classical = rds['classical'][position]
         except ValueError:
             temp_rank = 0
             temp_classical = 0
-        if rank != temp_rank and classical != temp_classical:
+        if not(str(rank) == str(temp_rank)) or not(
+                            str(classical) == str(temp_classical)):
             upload = True
             self.driver.get(link)
             player_table = self.driver.find_elements(
@@ -237,13 +290,23 @@ class Scraper:
             player_stats = []
             for row in player_table:
                 player_stats.append(row.text)
-            self.player_data["date_of_birth"].append(player_stats[1])
-            self.player_data["place_of_birth"].append(player_stats[2])
-            self.player_data["chess_federation"].append(player_stats[3])
+            self.player_data.at[position, "name"] = name
+            self.player_data.at[position, "rank"] = rank
+            self.player_data.at[position, "classical"] = classical
+            self.player_data.at[position, "date_of_birth"] = player_stats[1]
+            self.player_data.at[position, "place_of_birth"] = player_stats[2]
+            self.player_data.at[position, "chess_federation"] = player_stats[3]
             self.changes = True
-        # Get chess.com image if not already acquired
+        else:
+            self.player_data.at[position, "date_of_birth"] = (
+                rds['date_of_birth'][position])
+            self.player_data.at[position, "place_of_birth"] = (
+                rds['place_of_birth'][position])
+            self.player_data.at[position, "chess_federation"] = (
+                rds['chess_federation'][position])
         if not os.path.exists(f"raw_data/{name}/{name}.jpg"):
-            upload = True
+            # upload = True
+            self.driver.get(link)
             try:
                 image = self.driver.find_element(By.CLASS_NAME,
                                                  "post-view-thumbnail")
@@ -253,13 +316,6 @@ class Scraper:
             except Exception:
                 urllib.request.urlretrieve("https://tinyurl.com/y7l4drrj",
                                            f"raw_data/{name}/{name}.jpg")
-        else:
-            self.player_data["date_of_birth"].append(
-                                            temp_stats['date_of_birth'][0])
-            self.player_data["place_of_birth"].append(
-                                            temp_stats['place_of_birth'][0])
-            self.player_data["chess_federation"].append(
-                                            temp_stats['chess_federation'][0])
         return upload
 
     def upload_to_aws(self, filename, bucket, image, image2, folder):
@@ -268,17 +324,14 @@ class Scraper:
         s3b = boto3.resource('s3')
         with open(filename, 'rb') as data:
             s3.upload_fileobj(data, bucket, f"raw_data/{folder}/data.json")
-            print("uploading json file")
             try:
                 s3b.meta.client.upload_file(
                     image, bucket, f"raw_data/{folder}/{folder}.jpg")
-                print("uploaded picture")
             except Exception:
                 pass
             try:
                 s3b.meta.client.upload_file(
                     image2, bucket, f"raw_data/{folder}/{folder} - wiki.jpg")
-                print("uploaded second picture")
             except Exception:
                 pass
 
@@ -289,16 +342,7 @@ class Scraper:
         Converts the data.json files into a pandas data frame
         Uploads the data frame as a table in AWS
         """
-        DATABASE_TYPE = "postgresql"
-        DBAPI = 'psycopg2'
-        ENDPOINT = 'chess-db.cxwlqkybpl0p.eu-west-2.rds.amazonaws.com'
-        USER = 'postgres'
-        PASSWORD = 'chesspass'
-        PORT = 5432
-        DATABASE = 'chessdb'
-        engine = create_engine(f"{DATABASE_TYPE}+{DBAPI}://{USER}:"
-                               f"{PASSWORD}@{ENDPOINT}:{PORT}/{DATABASE}")
-        engine.connect()
+        self.engine.connect()
         file_list = []
         # Get the list of data files from the folder structure
         directory = 'raw_data'
@@ -319,13 +363,8 @@ class Scraper:
 
         # Upload the dataframe as a table to AWS RDS
         if self.changes:
-            data_set.to_sql('tbl_chess_players', engine, if_exists='replace')
-            # Have a look at the column names for each table
-            insp = inspect(engine)
-            print(insp)
-            for table_name in insp.get_table_names():
-                for column in insp.get_columns(table_name):
-                    print(f"Column: {column['name']} of {table_name}")
+            data_set.to_sql('tbl_chess_players', self.engine,
+                            if_exists='replace')
 
 
 if __name__ == "__main__":
@@ -337,14 +376,20 @@ if __name__ == "__main__":
     upload_to_rds = False
     if test is False:
         chess_scrape = Scraper("http://chess.com/ratings")
+        chess_scrape.connect_to_RDS_engine()
         for i in range(1, 9):
             url = "http://chess.com/ratings" + "?page=" + str(i)
             chess_scrape.page_grab(url)
             chess_scrape.store_UUIDs_and_links()
             chess_scrape.create_store(chess_scrape.data_store)
             chess_scrape.get_player_data()
-        chess_scrape.player_search()
-        chess_scrape.upload_table_data()
+        chess_scrape.sort_scraped_data()
+        if chess_scrape.check_for_differences():
+            print("Differences found - rescraping")
+            chess_scrape.player_search()
+            chess_scrape.upload_table_data()
+        else:
+            print("They're the same. No need to rescrape")
 
     else:
         chess_scrape = Scraper("http://chess.com/ratings")
