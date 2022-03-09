@@ -14,8 +14,7 @@ ENV aws_secret_access_key=LSFvGZmrjJH7O3UskR1lkZiLh4vBrIk1JIzrfJZP
 COPY . .
 
 # install python packages using pip
-COPY requirements.txt .
-RUN pip3 install -r requirements.txt
+vscodeRUN pip3 install -r requirements.txt
 
 # Get google's chrome signing key
 RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add -
