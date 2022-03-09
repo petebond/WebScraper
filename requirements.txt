@@ -1,0 +1,15 @@
+alive-progress
+async-generator
+beautifulsoup4
+boto3
+botocore
+numpy
+pandas
+psycopg2
+requests
+s3transfer
+selenium
+sqlalchemy
+urllib3
+webdriver-manager 
+

@@ -60,10 +60,22 @@ class Scraper:
         options = Options()
         options.add_argument('--headless')
         options.add_argument('--disable-gpu')
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--no-sandbox")
         self.driver = webdriver.Chrome(ChromeDriverManager().install(),
                                        options=options)
-        self.s3 = boto3.client('s3')
-        self.s3b = boto3.resource('s3')
+        self.s3 = boto3.client(
+            's3',
+            aws_access_key_id=os.environ['aws_access_key_id'],
+            region_name=os.environ['region'],
+            aws_secret_access_key=os.environ['aws_secret_access_key']
+            )
+        self.s3b = boto3.resource(
+            's3',
+            aws_access_key_id=os.environ['aws_access_key_id'],
+            region_name=os.environ['region'],
+            aws_secret_access_key=os.environ['aws_secret_access_key']
+            )
         # set storage location
         self.data_store = "./raw_data"
 
