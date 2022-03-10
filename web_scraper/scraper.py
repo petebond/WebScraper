@@ -64,18 +64,8 @@ class Scraper:
         options.add_argument("--no-sandbox")
         self.driver = webdriver.Chrome(ChromeDriverManager().install(),
                                        options=options)
-        self.s3 = boto3.client(
-            's3',
-            aws_access_key_id=os.environ['aws_access_key_id'],
-            region_name=os.environ['region'],
-            aws_secret_access_key=os.environ['aws_secret_access_key']
-            )
-        self.s3b = boto3.resource(
-            's3',
-            aws_access_key_id=os.environ['aws_access_key_id'],
-            region_name=os.environ['region'],
-            aws_secret_access_key=os.environ['aws_secret_access_key']
-            )
+        self.s3 = boto3.client('s3')
+        self.s3b = boto3.resource('s3')
         # set storage location
         self.data_store = "./raw_data"
 
@@ -84,7 +74,7 @@ class Scraper:
         DBAPI = 'psycopg2'
         ENDPOINT = 'chess-db.cxwlqkybpl0p.eu-west-2.rds.amazonaws.com'
         USER = 'postgres'
-        PASSWORD = 'chesspass'
+        PASSWORD = os.environ['PWORD']
         PORT = 5432
         DATABASE = 'chessdb'
         self.engine = create_engine(f"{DATABASE_TYPE}+{DBAPI}://{USER}:"
