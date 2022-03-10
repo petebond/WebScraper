@@ -11,5 +11,4 @@ s3transfer
 selenium
 sqlalchemy
 urllib3
-webdriver-manager 
-
+webdriver-manager
