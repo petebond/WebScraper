@@ -3,16 +3,13 @@
 FROM python:3.9-buster
 WORKDIR /app
 
-
 # Upgrade pip
 RUN pip3 install --upgrade pip
 
-# Copy AWS credentials
-ENV region=eu-west-2
-ENV aws_access_key_id=AKIA34QT5SJ5M5422NOT
-ENV aws_secret_access_key=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
-
+# Copy all allowed files and credentials
 COPY . .
+ENV HOME ~
+ADD aws ~/.aws
 
 # install python packages using pip
 RUN pip3 install -r requirements.txt
