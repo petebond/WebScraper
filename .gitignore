@@ -1,3 +1,6 @@
 # ignore all of the downloaded files in the git commits
 raw_data/*
 web_scraper/raw_data/*
+Archive/*
+aws/*
+.env
