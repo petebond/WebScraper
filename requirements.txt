@@ -12,3 +12,4 @@ sqlalchemy
 urllib3
 webdriver-manager
 alive-progress
+python-dotenv
