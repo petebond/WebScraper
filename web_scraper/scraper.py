@@ -3,7 +3,7 @@ import numpy as np
 from bs4 import BeautifulSoup
 from selenium import webdriver
 import urllib.request
-from webdriver_manager.chrome import ChromeDriverManager
+# from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 import os
@@ -15,6 +15,8 @@ import shutil
 import pandas as pd
 from sqlalchemy import create_engine
 from alive_progress import alive_bar
+from dotenv import load_dotenv
+load_dotenv()
 
 
 class Scraper:
@@ -62,8 +64,7 @@ class Scraper:
         options.add_argument('--disable-gpu')
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--no-sandbox")
-        self.driver = webdriver.Chrome(ChromeDriverManager().install(),
-                                       options=options)
+        self.driver = webdriver.Chrome(options=options)
         self.s3 = boto3.client('s3')
         self.s3b = boto3.resource('s3')
         # set storage location
@@ -72,13 +73,14 @@ class Scraper:
     def connect_to_RDS_engine(self):
         DATABASE_TYPE = "postgresql"
         DBAPI = 'psycopg2'
-        ENDPOINT = 'chess-db.cxwlqkybpl0p.eu-west-2.rds.amazonaws.com'
-        USER = 'postgres'
-        PASSWORD = os.environ['PWORD']
+        ENDPOINT = os.environ.get('ENDPOINT')
+        DBUSER = os.environ.get('DBUSER')
+        DBPASSWORD = os.environ.get('DBPASSWORD')
         PORT = 5432
-        DATABASE = 'chessdb'
-        self.engine = create_engine(f"{DATABASE_TYPE}+{DBAPI}://{USER}:"
-                                    f"{PASSWORD}@{ENDPOINT}:{PORT}/{DATABASE}")
+        DATABASE = os.environ.get('DATABASE')
+        self.engine = create_engine(f"{DATABASE_TYPE}+{DBAPI}://{DBUSER}:"
+                                    f"{DBPASSWORD}@{ENDPOINT}:"
+                                    f"{PORT}/{DATABASE}")
         self.engine.connect()
         self.rds_player_data = pd.read_sql_table(
             'tbl_chess_players', self.engine,
