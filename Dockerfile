@@ -6,7 +6,7 @@ WORKDIR /app
 # Copy all allowed files and credentials
 ENV HOME ~
 COPY . .
-ADD aws ~/.aws
+# Old AWS credentials copy ADD aws ~/.aws
 
 # Upgrade pip
 RUN pip3 install --upgrade pip
