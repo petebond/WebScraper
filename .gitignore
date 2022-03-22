@@ -6,4 +6,6 @@ aws/*
 .env
 *.pem
 .aws/*
+*.pem*
+
 
