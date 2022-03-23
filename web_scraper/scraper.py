@@ -186,23 +186,31 @@ class Scraper:
             'name').reset_index(drop=True)
 
     def check_for_differences(self):
-        self.player_data['matched'] = (
-            np.where(self.player_data['name']
-                     == self.rds_player_data['name'], 1, 0))
-        if (sum(self.player_data['matched']) == len(
-                self.player_data['matched'])):
+        if len(self.player_data) != len(self.rds_player_data):
+            return True
+        else:
+            # self.player_data['matched'] = [(
+            #     self.player_data['name'].reset_index(drop=True) ==
+            #     self.rds_player_data['name'].reset_index(drop=True)
+            #     )]
+            # print(self.player_data['matched'])
             self.player_data['matched'] = (
-                np.where(self.player_data['rank']
-                         == self.rds_player_data['rank'], 1, 0))
-            if (sum(self.player_data['matched'])
-                    == len(self.player_data['matched'])):
+                np.where(self.player_data['name']
+                         == self.rds_player_data['name'], 1, 0))
+            if (sum(self.player_data['matched']) == len(
+                    self.player_data['matched'])):
                 self.player_data['matched'] = (
-                    np.where(self.player_data['classical']
-                             == self.rds_player_data['classical'], 1, 0))
+                    np.where(self.player_data['rank']
+                             == self.rds_player_data['rank'], 1, 0))
                 if (sum(self.player_data['matched'])
                         == len(self.player_data['matched'])):
-                    print("They're the same. No need to rescrape")
-                    return False
+                    self.player_data['matched'] = (
+                        np.where(self.player_data['classical']
+                                 == self.rds_player_data['classical'], 1, 0))
+                    if (sum(self.player_data['matched'])
+                            == len(self.player_data['matched'])):
+                        print("They're the same. No need to rescrape")
+                        return False
         print("Differences found - Calculating rescrape necessity")
         return True
 
@@ -276,7 +284,7 @@ class Scraper:
         as country of origin and chess federation that the player represents.
         """
         upload = False
-        rds = self.rds_player_data
+        rds = self.player_data
         position = rds[rds['name'] == name].index[0]
         try:
             temp_rank = rds['rank'][position]
@@ -392,6 +400,8 @@ if __name__ == "__main__":
             chess_scrape.create_store(chess_scrape.data_store)
             chess_scrape.get_player_data()
         chess_scrape.sort_scraped_data()
+        print("Scraped Player Data")
+        print(chess_scrape.player_data)
         if chess_scrape.check_for_differences():
             print("Differences found - rescraping")
             chess_scrape.player_search()
